@@ -1,0 +1,9 @@
+r1_models:
+  base: 
+    path: "./out/reason"
+    dim: 512
+    max_seq_len: 2048
+  large:
+    path: "./out/reason_768"
+    dim: 768 
+    max_seq_len: 4096 
