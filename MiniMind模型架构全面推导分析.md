@@ -933,4 +933,143 @@ MiniMind大模型架构展示了现代大语言模型的核心设计理念：
 
 ---
 
+大模型核心技术：数学公式与数字推导
+本文档聚焦于现代大模型中四个关键技术点的数学基础和计算逻辑。
+
+1. 均方根归一化 (RMSNorm)
+RMSNorm 的目的是快速、有效地对输入向量进行归一化，保持其方差不变，加速训练收敛。
+
+1.1. 数学公式
+给定输入向量 $x \in \mathbb{R}^D$，其 RMSNorm 的计算公式为：
+
+$$RMS(x) = \sqrt{\frac{1}{D} \sum_{i=1}^D x_i^2 + \epsilon}$$
+
+归一化后的输出 $y$ 是将输入 $x$ 除以其 RMS 值，再乘以可学习的缩放参数 $w$：
+
+$$y = \frac{x}{RMS(x)} \odot w$$
+
+其中，$\epsilon$ 是一个极小的常数（如 $10^{-5}$），用于防止除以零；$\odot$ 表示元素级乘法。
+
+1.2. 数字推导示例
+假设输入向量 $x=[2.0,4.0,1.0]$，维度 $D=3$， $\epsilon=0.0$（简化计算）。假设学习到的缩放参数 $w=[1.0,1.0,1.0]$。
+
+计算平方和的平均值：
+
+$$\frac{1}{D} \sum_{i=1}^D x_i^2 = \frac{2.0^2 + 4.0^2 + 1.0^2}{3} = \frac{4+16+1}{3} = \frac{21}{3} = 7.0$$
+
+计算 RMS 值：
+
+$$RMS(x) = \sqrt{7.0+0} \approx 2.64575$$
+
+归一化：
+
+$$x_{\text{norm}} = \frac{[2.0,4.0,1.0]}{2.64575} \approx [0.756,1.512,0.378]$$
+
+最终输出：
+
+$$y=x_{\text{norm}} \odot [1.0,1.0,1.0] \approx [0.756,1.512,0.378]$$
+
+2. 旋转位置编码 (RoPE)
+RoPE 通过在嵌入向量上应用旋转操作来编码相对位置信息。它仅作用于 Q 和 K 向量。
+
+2.1. 数学公式
+RoPE 对向量的每两个维度（一对）应用一个旋转操作。对于第 $m$ 个位置的向量 $x$，其第 $j$ 对维度 $[x_{2j},x_{2j+1}]$ 的旋转操作如下（忽略 $W_Q,W_K$ 投影）：
+
+$$x_{2j}' = x_{2j} \cos(m\theta_j) - x_{2j+1} \sin(m\theta_j)$$
+$$x_{2j+1}' = x_{2j} \sin(m\theta_j) + x_{2j+1} \cos(m\theta_j)$$
+
+其中，$\theta_j = 10000^{-2j/D}$ 是预设的频率。
+
+用旋转矩阵形式表示：
+
+$$\begin{pmatrix} x_{2j}' \\ x_{2j+1}' \end{pmatrix} = \begin{pmatrix} \cos(m\theta_j) & -\sin(m\theta_j) \\ \sin(m\theta_j) & \cos(m\theta_j) \end{pmatrix} \begin{pmatrix} x_{2j} \\ x_{2j+1} \end{pmatrix}$$
+
+2.2. 数字推导示例
+假设：
+
+当前位置 $m=1$。
+
+词嵌入的某一维度对为 $[x_0,x_1] = [5,2]$。
+
+计算得到的旋转角度 $m\theta_j = 0.5$ 弧度。
+
+计算旋转因子：
+
+$\cos(0.5) \approx 0.8776$
+$\sin(0.5) \approx 0.4794$
+
+应用旋转操作：
+
+$$\begin{pmatrix} x_0' \\ x_1' \end{pmatrix} = \begin{pmatrix} 0.8776 & -0.4794 \\ 0.4794 & 0.8776 \end{pmatrix} \begin{pmatrix} 5 \\ 2 \end{pmatrix}$$
+
+计算结果：
+
+$x_0' = (5 \times 0.8776) - (2 \times 0.4794) = 4.388 - 0.9588 = 3.4292$
+$x_1' = (5 \times 0.4794) + (2 \times 0.8776) = 2.397 + 1.7552 = 4.1522$
+
+RoPE 后，原始向量 $[5,2]$ 变为 $[3.4292,4.1522]$。
+
+3. 分组查询注意力 (GQA)
+GQA 是一种优化，用于减少 Key (K) 和 Value (V) 的内存开销，同时保持多个查询头 (Q) 的多样性。
+
+3.1. 核心逻辑
+GQA 的核心在于**重复键值对**：
+
+$$\text{重复因子} \ (n_{\text{rep}}) = \frac{\text{查询头数} \ (H_Q)}{\text{键值头数} \ (H_{KV})}$$
+
+如果 $H_Q = 8$ 且 $H_{KV} = 2$，则 $n_{\text{rep}} = 4$。
+
+3.2. 数字推导示例
+在推理阶段，GQA 不改变注意力得分的计算公式，它改变的是输入到计算单元的维度。
+
+假设每个头的维度 $D_{\text{head}} = 64$，序列长度 $L=100$。
+
+原始 MHA 内存消耗：
+
+$$\text{Memory}_{\text{MHA}} = H_Q \times L \times D_{\text{head}} \times 2$$
+$$\text{Memory}_{\text{MHA}} = 8 \times 100 \times 64 \times 2 = 102,400 \text{ 浮点数 (for KV Cache)}$$
+
+GQA ($H_{KV} = 2$) 内存消耗：
+
+$$\text{Memory}_{\text{GQA}} = H_{KV} \times L \times D_{\text{head}} \times 2$$
+$$\text{Memory}_{\text{GQA}} = 2 \times 100 \times 64 \times 2 = 25,600 \text{ 浮点数}$$
+
+GQA 逻辑操作:
+在计算注意力之前，模型将 $K_{\text{group 1}}$ 和 $V_{\text{group 1}}$ 在头维度上复制 4 次，使其与 $Q_{\text{head 1}}$ 到 $Q_{\text{head 4}}$ 的维度匹配，从而参与各自的注意力计算。
+
+4. Softmax 权重计算 (注意力权重 A)
+注意力机制最终提取信息的权重 A 是通过 Softmax 函数对缩放后的得分进行归一化得到的。
+
+4.1. 数学公式
+注意力权重 A 的计算公式（针对单个头）：
+
+$$A = \text{Softmax}(\frac{QK^T}{\sqrt{D_{\text{head}}}})$$
+
+其中，Softmax 的定义是：
+
+$$\text{Softmax}(z_i) = \frac{e^{z_i}}{\sum_j e^{z_j}}$$
+
+4.2. 数字推导示例
+假设在 Head 1 中，查询 Q 与三个历史词 $K_{\text{animal}},K_{\text{street}},K_{\text{tired}}$ 的缩放点积得分（$\frac{QK^T}{\sqrt{D_{\text{head}}}}$）如下：
+
+$S_{\text{scaled}} = [z_{\text{animal}},z_{\text{street}},z_{\text{tired}}]=[2.0,1.0,3.0]$
+
+计算指数：
+
+$e^{2.0} \approx 7.389$
+$e^{1.0} \approx 2.718$
+$e^{3.0} \approx 20.086$
+
+计算分母（总和）：
+
+$$\sum e^{z_j} = 7.389+2.718+20.086 = 30.193$$
+
+计算 Softmax 权重 A：
+
+$A_{\text{animal}} = \frac{7.389}{30.193} \approx 0.245$
+$A_{\text{street}} = \frac{2.718}{30.193} \approx 0.090$
+$A_{\text{tired}} = \frac{20.086}{30.193} \approx 0.665$
+
+结果： 最终的注意力权重向量 A 为 $[0.245,0.090,0.665]$。这些权重相加等于 1.0，模型将根据这些权重从对应的 Value (V) 向量中提取信息。
+
 *本文档基于MiniMind项目源码分析，持续更新中...*
